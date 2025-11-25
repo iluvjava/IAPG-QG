@@ -34,12 +34,13 @@ function dval_trait_assigner(this::ClCnvxFxn)::TraitsOfClCnvxFxn
     )
 end
 
+
 function grad_and_fxnval!(
     this::ClCnvxFxn, 
     x::FiniteEuclideanSpace,
     x_out::FiniteEuclideanSpace
 )::Number
-# IMPLEMENT THIS FOR SPECIFIC TYPES! 
+    
     return grad_and_fxnval!(
         differentiable_trait_assigner(this), 
         this, x, x_out
@@ -48,12 +49,11 @@ end
 
 function prox!(
     this::ClCnvxFxn, 
-    y::FiniteEuclideanSpace, 
     y_out::FiniteEuclideanSpace, 
+    y::FiniteEuclideanSpace, 
     lambda::Number = 1, 
     eta::Number = 1
 )::Nothing
-    # IMPLEMENT THIS FOR SPECIFIC TYPES! 
     return prox!(
         prox_trait_assign(this), this, 
         y, y_out, lambda, eta
@@ -61,17 +61,21 @@ function prox!(
 end
 
 """
-Evaluates the proximal operator of the dual of (x |> lambda*f(x)) at y. 
+Evaluates the proximal operator of the dual of function (x |> f(x)) at y. 
+
+We use the Resolvent Identity of proximal operator. 
+prox[ρ(g⋆)](y) = y - ρ prox[g/ρ](y/ρ)
 """
 function dprox!(
     this::ClCnvxFxn, 
+    y_out::FiniteEuclideanSpace,
     y::FiniteEuclideanSpace, 
-    y_out::FiniteEuclideanSpace, 
-    lambda::Number=1
+    rho::Number=1
 )::Nothing
-    error("Not yet implemented. ")
-    prox!(this, y, y_out, lambda)
-    # TODO IMPLEMENT THIS. 
+    prox!(this, y_out, y, 1/rho, 1/rho) 
+    y_out .*= -rho
+    y_out .+= y
+    return nothing
 end
 
 function dval(
@@ -89,7 +93,7 @@ end
 ### type of traits the function as assigned to has, or don't. 
 
 abstract type TraitsOfClCnvxFxn
-    
+
 end
 
 
@@ -98,16 +102,18 @@ struct Proxable <: TraitsOfClCnvxFxn
 end
 
 """
-Proximal operator of the function (x |-> lambda*f(eta*x)) at y
+Let f be a ClCnvxFxn. 
+This evaluates Proximal operator of the function (x |-> rho*f(eta*x)) at y. 
 """
 function prox!(
     ::Proxable,
     this::ClCnvxFxn, 
     y::FiniteEuclideanSpace, 
     y_out::FiniteEuclideanSpace,
-    lambda::Number, 
+    rho::Number, 
     eta::Number
 )::Nothing
+    # IMPLEMENT THIS FOR SPECIFIC TYPE
     error("Function `prox` not yet implemented for $(typeof(this))")
 end
 
@@ -123,8 +129,8 @@ function grad_and_fxnval!(
     x::FiniteEuclideanSpace,
     x_out::FiniteEuclideanSpace
 )::Number
+    # IMPLEMENT THIS FOR SPECIFIC TYPE
     error("Function `grad_and_fxnval` not yet implemented for $(typeof(this))")
-    # return the function value! 
 end
 
 ### ============================================================================
@@ -142,5 +148,6 @@ function dval(
     this::ClCnvxFxn, 
     x::FiniteEuclideanSpace
 )::Number
+    # IMPLEMENT THIS FOR SPECIFIC TYPE
     error("Function `dval` not implemented by type $(typeof(this)) yet. ")
 end
