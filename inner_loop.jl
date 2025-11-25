@@ -30,7 +30,7 @@ struct InexactProximalPoint
     v1::AbstractVector
     "Intermediate: AAᵀv"
     v2::AbstractVector
-    "Intermediate step for prox"
+    "Intermediate step for computing prox of ω⋆"
     v3::AbstractVector
 
 
@@ -87,6 +87,8 @@ Update by:
 v⁺ = prox[ω⋆](v - (1/τ)(AAᵀv - y))
 z⁺ = y - λAᵀv
 ```
+
+The above is just Chambolle Pock of the proximal problem. 
 
 To elimiate garbage collector time, implementations requires the following 
 list of intermediate results to be stored after every 
@@ -159,7 +161,7 @@ function do_ista_iteration!(
     # check dimensions of inputs. 
     @assert size(this.v) == size(v_out)
     @assert size(this.z) == size(z_out)
-    
+
     # Referencing assigned resources. 
     λ = lambda
     ϵ = epsilon
@@ -183,7 +185,7 @@ function do_ista_iteration!(
         p = ω(Az) + dot(z - y, z - y)/(2λ)
         q = (λ/2)*dot(Aᵀv, Aᵀv) - dot(Aᵀv, y) + dval(ω, v)
         if p + q <= ϵ
-            # (z⁺, v⁺) from previous iteration exited the for loop. 
+            # (z⁺, v⁺) from previous iteration satisfies duality gap. 
             break
         end
         # perform iteration
@@ -201,8 +203,5 @@ function do_ista_iteration!(
     end
     
 
-    
-
-    
     
 end

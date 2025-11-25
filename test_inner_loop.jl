@@ -40,3 +40,12 @@ using Test
     @test dval_dprox()
 
 end
+
+
+@testset "Testing the inner loop that solves the proximal point problem" begin
+
+    A = randn(3, 4)
+    ω = OneNormFunction(0.1)
+
+
+end
