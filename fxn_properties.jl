@@ -37,8 +37,8 @@ end
 
 function grad_and_fxnval!(
     this::ClCnvxFxn, 
+    x_out::FiniteEuclideanSpace, 
     x::FiniteEuclideanSpace,
-    x_out::FiniteEuclideanSpace
 )::Number
     
     return grad_and_fxnval!(

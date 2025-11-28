@@ -14,14 +14,14 @@ struct InexactProximalPoint
     # Fieds that remains constants and shouldn't be changed follow: 
     A::AbstractMatrix
     A_adj::AbstractMatrix
-    AA_adj::AbstractMatrix
     "omega as a type of `ClCnvxFxn` must have trait `Proxable`"
     omega::ClCnvxFxn
     """
         Inverted stepsize for ISTA evaluation. Best choice is the spectral norm of AᵀA
     """
     t::Number
-    # Fields that mutates now follow.
+    
+    # Fields that will mutate when running now follows.
     z::AbstractVector
     "Intermediate step for Au, for primal objective computations."
     z1::AbstractVector
@@ -37,22 +37,35 @@ struct InexactProximalPoint
     function InexactProximalPoint(
         A::AbstractMatrix, 
         A_adj::AbstractMatrix,
+        z::AbstractVector, 
+        v::AbstractVector,
         omega::ClCnvxFxn, 
     )
         # parameter assignments.
-        AA_adj = A*A_adj
-        (m, n) = size(A)
-        t = norm(AA_adj)*1.01
+        t = norm(A, 2)^2
         # memory allocations. 
-        z = zeros(m)
-        v = zeros(n)
-        z1 = similar(z)
-        v1 = similar(z)
-        v2 = smilar(v)
-        v3 = similar(v)
+        z1 = similar(v)  # Az
+        v1 = similar(z)  # Aᵀv
+        v2 = similar(v)  # AAᵀv
+        v3 = similar(v)  # proximal gradient on dual objective
         return new(
-            A, A_adj, AA_adj , omega, t, 
+            A, A_adj, omega, t, 
             z, z1, v, v1, v2, v3
+        )
+    end
+
+    function InexactProximalPoint(
+        A::AbstractMatrix, 
+        omega::ClCnvxFxn, 
+    )
+        # parameter assignments.
+        A_adj = transpose(A)
+        # memory allocations. 
+        (m, n) = size(A)
+        z = zeros(n)
+        v = zeros(m)
+        return InexactProximalPoint(
+            A, A_adj, z, v, omega
         )
     end
 end
@@ -68,16 +81,33 @@ end
 """
 Returns the value of : `ω(Az) + 1/(2λ)‖u - v‖²`. 
 """
-function eval_primal_objective_at(
+function eval_primal_objective_at_current_point(
     this::InexactProximalPoint, 
-    z::AbstractVector,
-    y::AbstractVector
+    y::AbstractVector, 
+    lambda::Number
 )::Number
     ω = this.omega
     A = this.A
-    λ = this.lambda
+    z = this.z
+    λ = lambda
     return ω(A*z) + dot(z - y, z - y)/(2λ)
 end
+
+
+function eval_dual_objective_at_current_point(
+    this::InexactProximalPoint, 
+    y::AbstractVector,
+    lambda::Number
+)::Number
+    # TODO: IMPLEMENT THIS ONE HERE. 
+    v = this.v
+    Aᵀv = (this.A_adj)*v
+    λ = lambda 
+    ω = this.omega
+    return (λ/2)*dot(Aᵀv, Aᵀv) - dot(Aᵀv, y) + dval(ω, v)
+end
+
+
 
 
 """
@@ -98,47 +128,29 @@ And we will mutate them.
 
 
 """
-function _update_primal_dual!(
-    this::InexactProximalPoint, # will mutate. 
-    z_out::AbstractVector, # will mutate. 
-    v_out::AbstractVector, # will mutate.
-    v1::AbstractVector,    # will Mutate. 
-    v2::AbstractVector,    # will Mutate. 
-    v3::AbstractVector,    # will mutate. 
-    v::AbstractVector,     # will reference. 
-    y::AbstractVector,     # will reference. 
-    lambda::Number
+function _update_dual!(
+    this::InexactProximalPoint,     # will mutate. 
+    v⁺::AbstractVector,             # will mutate.
+    AAᵀv::AbstractVector,           # will Mutate. 
+    ∇::AbstractVector,              # will mutate. 
+    v::AbstractVector,              # will reference. 
+    Ay::AbstractVector,             # will reference. 
+    Aᵀv::AbstractVector,            # will reference
+    λ::Number
 )
     # Referencing. 
-    z⁺ = z_out
-    v⁺ = v_out
-    λ = lambda
-    v = v
-    Aᵀv = v1
-    AᵀAv = v2
-    ∇ = v3
-    Aᵀ = this.A_adj
-    AᵀA = this.AA_adj
-    τ = (this.t)*lambda
+    A = this.A
+    τ = (this.t)*λ
     ω = this.omega
-    # Mutate Aᵀv, AᵀAv 
-    mul!(Aᵀv, Aᵀ, v)
-    mul!(AᵀAv, AᵀA, v)
-    # Mutate ∇ to store: v - (1/τ)(AAᵀv - y)
-    ∇ .= AAᵀv
-    ∇ .-= y
-    ∇ .*= -(1/τ)
-    ∇ .+= v
-    # Mutae v⁺ by prox of ω at ∇. 
+    # Mutate AᵀAv 
+    mul!(AAᵀv, A, Aᵀv)
+    ∇ .= @. v - (1/τ)*(λ*AAᵀv - Ay)
+    # Mutae v⁺
     dprox!(
         ω, 
-        v⁺, # mutates
-        ∇, 1/τ # no mutate. 
+        v⁺,     # mutates
+        ∇, 1/τ  # no mutate. 
     )
-    # Mutate z⁺. 
-    z⁺ .= Aᵀv
-    z⁺ .*= -λ
-    z⁺ .+= y
     return nothing
 end
 
@@ -147,20 +159,27 @@ end
 """
 Returns the number of iterations used to achieve the assigned accuracies. 
 It mutates the given vectors. 
+
+It returns the total number of iterations experienced. 
+If the number is -1, it means max iteration reached and the duality gap
+tolerance is not satisfied. 
 """
 function do_ista_iteration!(
-    this::InexactProximalPoint,
-    v_out::AbstractVector, # will mutate
-    z_out::AbstractVector, # will mutate
-    z0::AbstractVector,    # will reference 
-    y::AbstractVector,     # will reference
-    lambda::Number, 
+    this::InexactProximalPoint,     # will mutate
+    v_out::AbstractVector,          # will mutate
+    z_out::AbstractVector,          # will mutate
+    y::AbstractVector,              # will reference
+    lambda::Number; 
     epsilon::Number=1e-6,
-    itr_max::Int=8000
+    itr_max::Int=8000, 
+    # will mutate
+    duality_gaps::Union{Vector, Nothing}=nothing
 )::Number
     # check dimensions of inputs. 
     @assert size(this.v) == size(v_out)
     @assert size(this.z) == size(z_out)
+    @assert epsilon > 0
+    @assert lambda > 0
 
     # Referencing assigned resources. 
     λ = lambda
@@ -169,39 +188,68 @@ function do_ista_iteration!(
     z = this.z
     v = this.v
     A = this.A
+    Aᵀ = this.A_adj
+    # Mutating running parameters: 
     Aᵀv = this.v1
     AAᵀv = this.v2
     Az = this.z1
     z⁺ = z_out  
     v⁺ = v_out
-    # Starting the forloop, (z, v) primal dual initial guess. 
-    z .= z0
-    dprox!(ω, v⁺, v)
-    v .= v⁺
+    # Ends
+    Ay = A*y
+    # Starting the forloop, with feasible (z, v) primal dual initial guesses. 
+    z .= y
+    dprox!(ω, v, Ay) 
+    mul!(Aᵀv, Aᵀ, v)
+    j = 0
     while j <= itr_max
         # update duality gap optimality condition, on (z, v)
         mul!(Az, A, z)
-        # TODO: ASSIGN RESOURCES FOR THIS OPERATION AS WELL! 
-        p = ω(Az) + dot(z - y, z - y)/(2λ)
+        z .= @. z - y 
+        p = ω(Az) + dot(z, z)/(2λ)
+        z .= @. z + y
         q = (λ/2)*dot(Aᵀv, Aᵀv) - dot(Aᵀv, y) + dval(ω, v)
+        if !isnothing(duality_gaps)
+            push!(duality_gaps, p + q)
+        end
         if p + q <= ϵ
             # (z⁺, v⁺) from previous iteration satisfies duality gap. 
             break
         end
         # perform iteration
         j += 1
-        _update_primal_dual!(
+        _update_dual!(
             this, 
-            # will mutate
-            z⁺, v⁺, Aᵀv, AAᵀv, this.v3,
-            # no mutate
-            v, y, λ
+            v⁺, AAᵀv, this.v3,  # will mutate
+            v, Ay, Aᵀv, λ       # no mutate
         )
         # update reference (z, v) to (z⁺, v⁺)
+        mul!(Aᵀv, Aᵀ, v⁺)
+        z⁺ .= @. y - λ*Aᵀv
         z .= z⁺
         v .= v⁺
     end
-    
+    return j
+end
 
-    
+
+function do_ista_iteration!(
+    this::InexactProximalPoint,
+    y::AbstractVector,     # will reference
+    lambda::Number;
+    epsilon::Number=1e-6,
+    itr_max::Int=8000,
+    duality_gaps::Union{Vector, Nothing}=nothing
+)::Number 
+
+return do_ista_iteration!(
+        this, 
+        similar(this.v), 
+        similar(this.z), 
+        y, 
+        lambda, 
+        epsilon=epsilon, 
+        itr_max=itr_max, 
+        duality_gaps=duality_gaps
+    )
 end
