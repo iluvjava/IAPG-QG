@@ -62,9 +62,9 @@ struct InexactProximalPoint
         A_adj = transpose(A)
         # memory allocations. 
         (m, n) = size(A)
-        z = zeros(n)
+        z = zeros(n)               # Initial guess z. 
         v = zeros(m)
-        dprox!(omega, v, zeros(m)) # initial guess. 
+        dprox!(omega, v, zeros(m)) # Initial guess V. 
         return InexactProximalPoint(
             A, A_adj, z, v, omega
         )
@@ -154,7 +154,7 @@ function _update_dual!(
         end
         ∇ .= @. v⁺ - v
         d = (τ/2)*dot(∇, ∇)
-        mul!(Aᵀv, Aᵀ, ∇)
+        mul!(Aᵀv, Aᵀ, ∇)            # bregman divergence here. 
         if τ < Inf64 && (λ/2)*dot(Aᵀv, Aᵀv) <= d
             # good! shrink τ to speed up future iteration. 
             τ /= 2^(1/2048)
@@ -203,14 +203,13 @@ function do_ista_iteration!(
     v = this.v
     A = this.A
     Aᵀ = this.A_adj
+    Ay = A*y
     # Mutating running parameters: 
     Aᵀv = this.v1
     AAᵀv = this.v2
     Az = this.z1
     z⁺ = z_out
-    v⁺ = v_out
-    # Ends
-    Ay = A*y
+    v⁺ = v_out    
     # Starting the forloop, with feasible (z, v) primal dual initial guesses. 
     # z .= y
     # dprox!(ω, v, v)

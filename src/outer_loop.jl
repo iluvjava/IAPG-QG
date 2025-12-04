@@ -38,7 +38,6 @@ struct IAPGOuterLoopRunner
     end
 
 
-
 end
 
 
@@ -62,7 +61,7 @@ function _eval_prox_grad!(
     y⁺::Vector{Float64},    # Will mutate 
     z::Vector{Float64},     # Will mutate
     v::Vector{Float64},     # Will mutate
-    ∇fy::Vector{Float64},    # Will reference
+    ∇fy::Vector{Float64},   # Will reference
     y::Vector{Float64},     # Will reference
     fx::Number,             # Will reference
     L::Number,              # Will reference
