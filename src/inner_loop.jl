@@ -178,7 +178,7 @@ If the number is -1, it means max iteration reached and the duality gap
 tolerance is not satisfied. 
 """
 function do_ista_iteration!(
-    this::InexactProximalPoint,     # will mutate
+    this::InexactProximalPoint,      # will mutate
     v_out::Vector{Float64},          # will mutate
     z_out::Vector{Float64},          # will mutate
     y::Vector{Float64},              # will reference
@@ -211,15 +211,15 @@ function do_ista_iteration!(
     z⁺ = z_out
     v⁺ = v_out    
     # Starting the forloop, with feasible (z, v) primal dual initial guesses. 
-    # z .= y
-    # dprox!(ω, v, v)
+    z .= y
+    # Initial guess of v is made in the constructor of the instance. 
     mul!(Aᵀv, Aᵀ, v)
     j = 0
     while j < itr_max
         # update duality gap optimality condition, on (z, v)
         mul!(Az, A, z)
         z .= @. z - y 
-        p = ω(Az) + dot(z, z)/(2λ)
+        p  = ω(Az) + dot(z, z)/(2λ)
         z .= @. z + y
         q = (λ/2)*dot(Aᵀv, Aᵀv) - dot(Aᵀv, y) + dval(ω, v)
         if !isnothing(duality_gaps)
@@ -240,8 +240,8 @@ function do_ista_iteration!(
         # update reference (z, v) to (z⁺, v⁺)
         mul!(Aᵀv, Aᵀ, v)
         z⁺ .= @. y - λ*Aᵀv
-        z .= z⁺
-        v .= v⁺
+        z  .= z⁺
+        v  .= v⁺
     end
     return j
 end
@@ -261,7 +261,7 @@ return do_ista_iteration!(
         this, 
         similar(this.v), 
         similar(this.z), 
-        y, 
+        y,
         lambda, 
         epsilon=epsilon, 
         itr_max=itr_max, 

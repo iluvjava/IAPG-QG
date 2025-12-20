@@ -45,8 +45,18 @@ end
 
 
 @testset "Testing ResidualNormSquared" begin 
+
+    function make_instance()
+        A = randn(3, 4)
+        b = randn(4)
+        f = ResidualNormSquared(A, b)
+        @info "Making instance successful."
+        return true
+    end
+
     
     
+    @test make_instance()
 end
 
 

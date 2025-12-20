@@ -91,8 +91,6 @@ function plot_ribbon(
 end
 
 
-using DataFrames, Latexify
-
 
 function results_matrix_to_latex(
     A::Matrix;
@@ -116,42 +114,46 @@ function results_matrix_to_latex(
 end
 
 
+# EFFICIENCIES TEST. 
+let 
 
-n = 2048
-m = 1024
-repetition = 50
-# exponents = -6:-1:-16|>collect
-exponents = -(LinRange(6, 16, 100)|>collect)
-radius = 20
-λ, A, ω = setup_parameters(n=n, m=m)
+    n = 2048
+    m = 1024
+    repetition = 50
+    # exponents = -6:-1:-16|>collect
+    exponents = -(LinRange(6, 16, 100)|>collect)
+    radius = 20
+    λ, A, ω = setup_parameters(n=n, m=m)
 
-results = zeros(repetition, exponents |> length)
-@showprogress for r = 1:repetition
-    v_out = zeros(m)
-    z_out = zeros(n)
-    y = radius*randn(n) 
-    for (k, ϵ) in pairs(2.0 .^ exponents)
-        results[r, k] = run_once(z_out, v_out, y, A, ω, λ, ϵ)
+    results = zeros(repetition, exponents |> length)
+    @showprogress for r = 1:repetition
+        v_out = zeros(m)
+        z_out = zeros(n)
+        y = radius*randn(n) 
+        for (k, ϵ) in pairs(2.0 .^ exponents)
+            results[r, k] = run_once(z_out, v_out, y, A, ω, λ, ϵ)
+        end
     end
+
+    global p = plot_ribbon(
+        2.0 .^ exponents, 
+        results, 
+        plot_size=(800, 400), 
+        xlabel="\nInner Loop Primal Dual Gap: "*L"ϵ_k"*"\n",
+        ylabel="\nTotal Number of Inner loop Iterations",
+        title="5-Point Summary of Inner loop iterations varying "*L"\epsilon_k=2^{-k}", 
+        median_style=:scatterpath
+    )
+    p|>display
+
+
+    @info "The latex of the results matrix as a table: "
+    latex_table = results_matrix_to_latex(
+        results, 
+        row_names=["ϵ = 2^($(round(k,digits=4)))" for k in exponents]
+    )
+    latex_table |> println
+
+    savefig(p, "5p-inner-loop-j$(exponents[1])$(exponents[end]).png")
+
 end
-
-p = plot_ribbon(
-    2.0 .^ exponents, 
-    results, 
-    plot_size=(800, 400), 
-    xlabel="\nInner Loop Primal Dual Gap: "*L"ϵ_k"*"\n",
-    ylabel="\nTotal Number of Inner loop Iterations",
-    title="5-Point Summary of Inner loop iterations varying "*L"\epsilon_k=2^{-k}", 
-    median_style=:scatterpath
-)
-p|>display
-
-
-@info "The latex of the results matrix as a table: "
-results_matrix_to_latex(
-    results, 
-    row_names=["ϵ = 2^($(round(k,digits=4)))" for k in exponents]
-)|>println
-
-savefig(p, "5p-inner-loop-j$(exponents[1])$(exponents[end]).png")
-

@@ -138,8 +138,7 @@ end
 ### ============================================================================
 
 struct HasFenchelDual <: TraitsOfClCnvxFxn
-    # Knowing the primal of the function allows us to evaluate the dual of the 
-    # function as well. 
+    # We know the Fenchel Conjugate of the function
 end
 
 """
