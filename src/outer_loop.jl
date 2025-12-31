@@ -269,11 +269,12 @@ function _ipg!(
     y⁺ .= @. y - (1/L)*∇fy
     j = do_pgd_iteration!(
         ipp, v, y⁺⁺, y⁺,                        # will mutate
-        1/L,                              # ref only
+        1/L,                                    # ref only
         epsilon=ϵ,
-        rho=ρ, 
+        rho=ρ*B, 
         itr_max=inner_loop_settings.itr_max,    # ref only
-        backtracking=inner_loop_settings.backtracking
+        backtracking=inner_loop_settings.backtracking,
+        relerr_anchor=y
     )
     @assert !any(isnan, y⁺⁺) "Nans in y⁺⁺ from the inner loop. "
     if j < 0
@@ -396,8 +397,8 @@ function _iterate(
 
     yk⁺ .= @. αk*vk + (1 - αk)*xk
     fy = grad_and_fxnval!(f, ∇fy, yk⁺)
-    L0 = (1 + ρ)*B0 + ρ; Lk = (1 + ρ)*Bk
-    ϵk = k >= 1 ? (E*Lk/L0)/(k^p) : E
+    L0 = (1 + ρ)*B0; Lk = (1 + ρ)*Bk
+    ϵk = k >= 1 ? (Lk/L0)*((αk)^2)*E/(k^p) : E
     j, Bk⁺ = _ipg_ls!(
         this, y⁺, y⁺⁺, v, δy,   # Will mutate. 
         ∇fy, yk⁺, fy, Bk, ϵk,
@@ -408,7 +409,7 @@ function _iterate(
     )
     xk⁺ .= y⁺⁺
     vk⁺ .= @. xk + (1/αk)*(xk⁺ - xk)
-    Lk⁺ = Bk⁺ + ρ
+    Lk⁺ = (1 + ρ)Bk⁺
     α⁺ = (1/2)*(Lk/Lk⁺)*(-αk^2 + sqrt(αk^4 + (4*αk^2)*(Lk⁺/Lk)))
     return j, Bk⁺, α⁺, ϵk
 end
@@ -422,11 +423,12 @@ is satisfied.
 function run_outerloop_for!(
     this::IAPGOuterLoopRunner, 
     v0::Vector{Float64},
-    delta::Number;
+    tol::Number;
     max_itr::Int=512, 
     ls::Bool=true,
     lsbtrk::Bool=true, 
     lsbtrk_shrinkby::Number=1024,
+    show_progress::Bool=true,
     inner_loop_settings::InnerLoopSettings=InnerLoopSettings()
 )::ResultsCollector
     @assert length(v0) == size(this.A, 2)
@@ -445,7 +447,8 @@ function run_outerloop_for!(
     rstlcllctr = this.collector
     
     initialize!(rstlcllctr, xk, f, this.A, this.omega)
-    while true
+    ProgMeter = ProgressThresh(tol; desc="‖x_k - y_k‖:",dt=0.1)
+    for k = 0:max_itr
         j, Bk, α, ϵk = _iterate(
             # All of these mutates. 
             this, yk⁺, xk⁺, vk⁺, this.v, ∇fy, y⁺, y⁺⁺, δy,
@@ -455,13 +458,20 @@ function run_outerloop_for!(
         # STORE. The iterates. 
         vk .= vk⁺
         xk .= xk⁺
+        δynorm = norm(δy)
         register!(
-            rstlcllctr, j, ϵk, norm(δy), 1/(Bk + ρ), xk, 
+            rstlcllctr, j, ϵk, δynorm, 1/(Bk*(1 + ρ)), xk, 
             f, this.A, this.omega
         )
+        if show_progress 
+            update!(
+                ProgMeter, 
+                δynorm, 
+                showvalues=[("Outer Loop k",k), ("Inner Loop Iterated for",j)]
+            ) 
+        end
         # CHECK. If rrrors occured. 
         if j < 0 || isinf(Bk)
-            @assert j == -1 || j == -2 "Unknown error code what the fuck. "
             if j == -1
                 rstlcllctr.flag = INNERLOOP_MAX_ITERATION_REACHED()
                 break        
@@ -472,16 +482,15 @@ function run_outerloop_for!(
             end
             rstlcllctr.flag = OUTERLOOP_LINESEARCH_FAILED()
         end
-        if norm(δy) < delta
+        if δynorm < tol
             # EXITS. Optimality reached.
             break
         end
-        k += 1; if k >= max_itr 
+        if k >= max_itr 
             # EXITS. Maximum iteration reached. 
             rstlcllctr.flag = OUTERLOOP_MAX_ITERATION_REACHED()
             break 
         end
-
     end
 
     return rstlcllctr

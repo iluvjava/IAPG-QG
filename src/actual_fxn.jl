@@ -110,16 +110,16 @@ struct ResidualNormSquared <: ClCnvxFxn
     alpha::Number
     A::AbstractMatrix{Float64}
     AT::AbstractMatrix{Float64}
-    b::AbstractVecOrMat{Float64}
+    b::Vector{Float64}
     # For computing
     "p is the same shape as x "
-    p::AbstractVecOrMat{Float64}
+    p::Vector{Float64}
     "q is the same shape as Ax "
-    q::AbstractVecOrMat{Float64}
+    q::Vector{Float64}
 
     function ResidualNormSquared(
         A::AbstractMatrix, 
-        b::AbstractVecOrMat, 
+        b::Vector, 
         alpha::Number=1
     )
         @assert alpha >= 0 "alpha in ResidualNormSquare type must non-negative."
@@ -144,7 +144,7 @@ function differentiable_trait_assigner(
     return Differentiable()
 end
 
-function (this::ResidualNormSquared)(x::AbstractVecOrMat)::Number
+function (this::ResidualNormSquared)(x::Vector{Float64})::Number
     A = this.A
     B = this.b
     α = this.alpha

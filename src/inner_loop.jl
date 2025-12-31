@@ -13,7 +13,7 @@ struct InexactProximalPoint
     
     # Fieds that remains constants and shouldn't be changed follow: 
     A::AbstractMatrix{Float64}
-    A_adj::AbstractMatrix{Float64}
+    AT::AbstractMatrix{Float64}
     "omega as a type of `ClCnvxFxn` must have trait `Proxable`"
     omega::ClCnvxFxn
     """
@@ -100,7 +100,7 @@ function eval_dual_objective_at_current_point(
     lambda::Number
 )::Number
     v = this.v
-    Aᵀv = (this.A_adj)*v
+    Aᵀv = (this.AT)*v
     λ = lambda 
     ω = this.omega
     return (λ/2)*dot(Aᵀv, Aᵀv) - dot(Aᵀv, y) + dval(ω, v)
@@ -142,7 +142,7 @@ function _update_dual!(
 )::Number
     # Referencing. 
     A = this.A
-    Aᵀ = this.A_adj
+    Aᵀ = this.AT
     ω = this.omega
     # Mutate AᵀAv, no need for Aᵀv anymore. 
     mul!(AAᵀv, A, Aᵀv)
@@ -193,12 +193,13 @@ function do_pgd_iteration!(
     rho::Number=0, 
     itr_max::Int=8000, 
     duality_gaps::Union{Vector, Nothing}=nothing, # will mutate
-    backtracking::Bool=true
+    backtracking::Bool=true,
+    relerr_anchor::Vector{Float64}=y
 )::Number
     # check dimensions of inputs. 
     @assert size(this.v) == size(v_out)
     @assert size(this.z) == size(z_out)
-    @assert epsilon > 0
+    @assert epsilon > 0 "Expect ϵ > 0, but got ϵ=$epsilon"
     @assert lambda > 0 "Expect λ > 0, but we had λ=$lambda. Catastrophic error."
 
     # Referenced Parameters: 
@@ -210,7 +211,7 @@ function do_pgd_iteration!(
     z = this.z
     v = this.v
     A = this.A
-    Aᵀ = this.A_adj
+    Aᵀ = this.AT
     Ay = A*y
     # Mutating running parameters: 
     Az = this.v1
@@ -233,6 +234,7 @@ function do_pgd_iteration!(
         if !isnothing(duality_gaps)  
             push!(duality_gaps, p + q)
         end
+        zy .= @. z - relerr_anchor
         if p + q <= ϵ + (ρ/2)*dot(zy, zy) && j >= 1
             # EXITS. (z⁺, v⁺) duality gap reached. 
             break
@@ -271,7 +273,8 @@ function do_pgd_iteration!(
     rho::Number=0, 
     itr_max::Int=8000,
     duality_gaps::Union{Vector, Nothing}=nothing,
-    backtracking::Bool=true
+    backtracking::Bool=true, 
+    relerr_anchor::Vector{Float64}=y
 )::Number 
 
 
@@ -285,6 +288,7 @@ return do_pgd_iteration!(
         rho=rho,
         itr_max=itr_max, 
         duality_gaps=duality_gaps,
-        backtracking=backtracking
+        backtracking=backtracking,
+        relerr_anchor=relerr_anchor
     )
 end

@@ -9,9 +9,10 @@ include("actual_fxn.jl")
 
     function make_instance(
         A::AbstractVecOrMat, 
-        b::AbstractVecOrMat
+        b::AbstractVecOrMat, 
+        alpha=1
     )::ResidualNormSquared
-        return ResidualNormSquared(A, b)
+        return ResidualNormSquared(A, b, alpha)
     end
 
     function test_instantiation(
@@ -19,21 +20,23 @@ include("actual_fxn.jl")
         b::Vector
     )
         @info "Testing function instantiation and evaluation. The Vector case. "
-        f = make_instance(A, b)
+        α = 1/100
+        f = make_instance(A, b, α)
         result = f(zeros(3))
-        return isapprox(norm(b)^2/2, result)
+        return isapprox(α*norm(b)^2/2, result)
     end
 
     function gradient_evaluation()
         @info "Testing function gradient evaluation. "
+        α = 1/10
         A = diagm([1, 2, 3])
         b = rand(3)
         x = zeros(3)
-        f = make_instance(A, b)
+        f = make_instance(A, b, α)
         grad = zeros(3)
         # gradient at x
         grad_and_fxnval!(f, grad, x)
-        grad_shouldbe = A*(A*x - b) 
+        grad_shouldbe = α*A*(A*x - b)
         return isapprox(grad_shouldbe, grad)
     end
     

@@ -38,26 +38,28 @@ include("outer_loop.jl")
         b = zeros(m)
         C = randn(l, n)
         f = ResidualNormSquared(C, b)
-        ω = OneNormFunction(1)
+        ω = OneNormFunction(1/128)
         OuterLoop = IAPGOuterLoopRunner(
             f, ω, A, error_scale=3000, rho=1, store_fxn_vals=true
         )
         x0 = ones(n)
         global Results = run_outerloop_for!(
-            OuterLoop, x0, 1e-10, max_itr=65536, 
-            inner_loop_settings=InnerLoopSettings(4096, true, 2048)
+            OuterLoop, x0, 1e-10, max_itr=4096, 
+            lsbtrk=false, 
+            inner_loop_settings=InnerLoopSettings(65536, true, 2048)
         )
         @info "Reporting Results. "
         lineplot(
             1:length(Results.dy), 
-            Results.dy.|>log2, 
-            title="log2(‖x_k - y_k‖)"
+            Results.dy.|>log10, 
+            title="log10(‖x_k - y_k‖)"
         )|>println
         lineplot(
             1:length(Results.j), 
             Results.j,
             title="Inner total iterations vs each outer iteration"
         )|>println
+        @info "Exists by: $(Results.flag)"
         return true
     end
 

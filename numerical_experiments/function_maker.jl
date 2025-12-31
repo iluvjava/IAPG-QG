@@ -84,4 +84,11 @@ function box_kernel_averaging(
 end
 
 
-
+"""
+A matrix that does down sampling. 
+Give a binary filter vector, it will make the down sampling matrix. 
+Which is just a diagonal I matrix with zeros on the diagonal. 
+"""
+function downsample_matrix(
+    filter::Vector{T}
+)::AbstractMatrix where {T <: Number} return spdiagm(filter) end
