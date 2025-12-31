@@ -137,7 +137,8 @@ function _update_dual!(
     Aᵀv::Vector{Float64},           # will ref
     λ::Number,                      # will ref
     τ::Number,                      # will ref
-    backtracking::Bool=true
+    backtracking::Bool=true, 
+    bcktrck_shrinkage::Int=2048
 )::Number
     # Referencing. 
     A = this.A
@@ -162,7 +163,7 @@ function _update_dual!(
         # Aᵀv <- Aᵀ(v⁺ - v) 
         mul!(Aᵀv, Aᵀ, ∇) 
         if τ < Inf64 && (λ/2)*dot(Aᵀv, Aᵀv) <= d
-            τ /= 2^(1/2048)     # Shrink τ. Backtracking.  
+            τ /= 2^(1/bcktrck_shrinkage)   # Shrink τ. Backtracking.  
             break
         else
             τ *= 2              # Increase τ, Line Search. 
@@ -272,6 +273,7 @@ function do_pgd_iteration!(
     duality_gaps::Union{Vector, Nothing}=nothing,
     backtracking::Bool=true
 )::Number 
+
 
 return do_pgd_iteration!(
         this, 

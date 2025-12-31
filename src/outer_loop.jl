@@ -1,3 +1,37 @@
+"""
+A super type for all types representing the exist conditions. 
+"""
+abstract type AbstractExitFlag
+
+end
+
+"""
+Nothing strange happened, algorithm terminated because 
+stationary condition achieved. 
+"""
+struct SUCCESSFUL <: AbstractExitFlag end
+
+"""
+Inner Loop Line Search Failed. 
+"""
+struct INNERLOOP_LINESEARCH_FAILED <: AbstractExitFlag end
+
+"""
+Inner Loop Max Iteration Reached. 
+"""
+struct INNERLOOP_MAX_ITERATION_REACHED <: AbstractExitFlag end
+
+"""
+Outer Loop Line Search Failed. 
+"""
+struct OUTERLOOP_LINESEARCH_FAILED <: AbstractExitFlag end
+
+"""
+Outer Loop Max Iteration Reached. 
+"""
+struct OUTERLOOP_MAX_ITERATION_REACHED <: AbstractExitFlag end
+
+
 
 """
 Collect the results produced by the IAPGOuterLoopRunner. 
@@ -15,48 +49,114 @@ mutable struct ResultsCollector
     ss::Vector{Float64}
     "Current Iterates. "
     x::Vector{Float64}
+    "Objective function value"
+    fxn_vals::Vector{Float64}
+    
+    "Intermediate storage for A*x, when computing objective value. "
+    Ax::Vector{Float64}
+    "Boolean whether to store function objective value. "
+    store_fxn_vals::Bool
+    "A flag for noting the exiting conditions of the algorithm. "
+    flag::AbstractExitFlag
+    
 
-    function ResultsCollector()
+    function ResultsCollector(;store_fxn_vals::Bool=false)
 
         return new(
             Vector{Int}(), 
             Vector{Float64}(), 
             Vector{Float64}(),
             Vector{Float64}(), 
-            Vector{Float64}() 
+            Vector{Float64}(), 
+            Vector{Float64}(), 
+            Vector{Float64}(),
+            store_fxn_vals, 
+            SUCCESSFUL()
         )
     end
 
 end
 
+"""
+Store initial guess, and funtion value, depending on the boolean value. 
+"""
+function initialize!(
+    this::ResultsCollector, 
+    x::Vector{Float64}, 
+    f::ClCnvxFxn, 
+    A::AbstractMatrix,
+    omega::ClCnvxFxn
+)
+    # Store Solution
+    this.x = similar(x)
+    this.x .= x
 
+    # Store Function value
+    if this.store_fxn_vals    
+        this.Ax = A*x
+        push!(this.fxn_vals, f(x) + omega(this.Ax))
+    end
+end
 
 """
 Add the intermediate convergence metric computed in the outer loop 
 into the fields of this struct. 
+
 """
 function register!(
     this::ResultsCollector,
     j::Int,
     ϵk::Float64, 
     pg::Float64, 
-    ss::Float64
+    ss::Float64, 
+    x::Vector{Float64}, 
+    f::ClCnvxFxn, 
+    A::AbstractMatrix,
+    omega::ClCnvxFxn
 )::Nothing
     push!(this.j, j)
     push!(this.epsilon, ϵk)
     push!(this.dy, pg)
     push!(this.ss, ss)
+    # Store Solution. 
+    if length(this.x) == 0
+        error(
+            "Can you `initialize!` "*
+            "`ResultsCollector` before `register!` the iterates? "
+        )
+    end
+    this.x .= x
+    # Store objective function value. 
+    if this.store_fxn_vals
+        mul!(this.Ax, A, x)
+        push!(this.fxn_vals, f(x) + omega(this.Ax))
+    end
     return nothing
 end
+
+
 
 
 """"
 The inner loop has several parameters that can be adjusted. 
 These parameters wil be referred here for the outer loop to manage. 
+Note. If it's set for one outer loop, then it's there fixed for that outer loop. 
 """
 struct InnerLoopSettings 
+    
+    itr_max::Int
+    backtracking::Bool
+    bcktrck_shrinkage::Int
 
+    function InnerLoopSettings(
+        itr_max::Int=4096, 
+        backtracking::Bool=true, 
+        bcktrck_shrinkage::Int=2048
+    )
+        return new(itr_max, backtracking, bcktrck_shrinkage)
+    end
 end
+
 
 
 
@@ -97,7 +197,8 @@ struct IAPGOuterLoopRunner
         f::ClCnvxFxn, omega::ClCnvxFxn, A::AbstractMatrix;
         p::Number=2,
         error_scale::Number=1, 
-        rho::Number=1
+        rho::Number=1, 
+        store_fxn_vals::Bool=false
     )
         @assert p > 1 
         @assert error_scale > 0
@@ -117,7 +218,7 @@ struct IAPGOuterLoopRunner
         ipp = InexactProximalPoint(
             A, omega
         )
-        collector = ResultsCollector()
+        collector = ResultsCollector(store_fxn_vals=store_fxn_vals)
 
         # Return the instance. 
         return new(
@@ -160,17 +261,19 @@ function _ipg!(
     ∇fy::Vector{Float64},                       # Will reference
     B::Number,                                  # Will reference
     ϵ::Number,                                  # Will reference
-    ρ::Number;                                  # Will reference
-    inner_loop_itr_max::Number=4096             # Will reference
+    ρ::Number,                                  # Will reference
+    inner_loop_settings::InnerLoopSettings      # Will reference
 )::Number
     ipp = this.ipp
-    y⁺ .= @. y - (1/(B + ρ))*∇fy
+    L = (1 + ρ)*B
+    y⁺ .= @. y - (1/L)*∇fy
     j = do_pgd_iteration!(
         ipp, v, y⁺⁺, y⁺,                        # will mutate
-        1/(B + ρ),                              # ref only
-        itr_max=inner_loop_itr_max,             # ref only
+        1/L,                              # ref only
         epsilon=ϵ,
-        rho=ρ
+        rho=ρ, 
+        itr_max=inner_loop_settings.itr_max,    # ref only
+        backtracking=inner_loop_settings.backtracking
     )
     @assert !any(isnan, y⁺⁺) "Nans in y⁺⁺ from the inner loop. "
     if j < 0
@@ -198,10 +301,11 @@ function _ipg_ls!(
     fy::Float64,                    # will reference
     B::Number,                      # Will reference
     # ---------------------------------------------------
-    ϵk::Number;                     # Will reference
-    ls::Bool=false,                 # Will reference
-    lsbtrk::Bool=false,              # Will reference
-    lsbtrk_shrinkby::Number=1024
+    ϵk::Number,                     # Will reference
+    ls::Bool,                       # Will reference
+    lsbtrk::Bool,                   # Will reference
+    lsbtrk_shrinkby::Number, 
+    inner_loop_settings::InnerLoopSettings
 )::Tuple{Int, Float64}
     
     # Reference these constant variables: 
@@ -211,7 +315,7 @@ function _ipg_ls!(
     j = _ipg!(
         this, y⁺, y⁺⁺, v,   # will mutate. 
         y, ∇fy,
-        B, ϵk, ρ
+        B, ϵk, ρ, inner_loop_settings
     )
     δy .= @. y⁺⁺ - y
 
@@ -230,7 +334,8 @@ function _ipg_ls!(
                 δy .= @. y⁺⁺ - y
                 j⁺ = _ipg!(
                     this, y⁺, y⁺⁺, v, 
-                    y, ∇fy, B, ρ, ϵk
+                    y, ∇fy, B, ρ, ϵk, 
+                    inner_loop_settings
                 )
                 if j⁺ < 0
                     # EXITS. Inner loop failed. 
@@ -247,7 +352,7 @@ function _ipg_ls!(
             end
         end
         if lsbtrk 
-            B /= 2^(1/lsbtrk_shrinkby)
+            B  /= 2^(1/lsbtrk_shrinkby)
             ϵk /= 2^(1/lsbtrk_shrinkby)
         end
     end
@@ -280,27 +385,30 @@ function _iterate(
     k::Number,
     αk::Number,
     B0::Number, 
-    Bk::Number;
-    ls::Bool=false,
-    lsbtrk::Bool=false
+    Bk::Number,
+    ls::Bool,
+    lsbtrk::Bool, 
+    lsbtrk_shrinkby::Number, 
+    inner_loop_settings::InnerLoopSettings
 )::Tuple{Int, Float64, Float64, Float64}
     # Reference the constants. 
     f = this.f; ρ = this.rho; E = this.E; p = this.p
 
     yk⁺ .= @. αk*vk + (1 - αk)*xk
     fy = grad_and_fxnval!(f, ∇fy, yk⁺)
-    L0 = B0 + ρ; Lk = Bk + ρ
+    L0 = (1 + ρ)*B0 + ρ; Lk = (1 + ρ)*Bk
     ϵk = k >= 1 ? (E*Lk/L0)/(k^p) : E
     j, Bk⁺ = _ipg_ls!(
         this, y⁺, y⁺⁺, v, δy,   # Will mutate. 
         ∇fy, yk⁺, fy, Bk, ϵk,
-        ls=ls,
-        lsbtrk=lsbtrk           # Will reference
+        ls,
+        lsbtrk,           # Will reference
+        lsbtrk_shrinkby, 
+        inner_loop_settings
     )
     xk⁺ .= y⁺⁺
     vk⁺ .= @. xk + (1/αk)*(xk⁺ - xk)
     Lk⁺ = Bk⁺ + ρ
-    # FORMULA HERE INCORRECT. 
     α⁺ = (1/2)*(Lk/Lk⁺)*(-αk^2 + sqrt(αk^4 + (4*αk^2)*(Lk⁺/Lk)))
     return j, Bk⁺, α⁺, ϵk
 end
@@ -315,7 +423,11 @@ function run_outerloop_for!(
     this::IAPGOuterLoopRunner, 
     v0::Vector{Float64},
     delta::Number;
-    max_itr::Int=512
+    max_itr::Int=512, 
+    ls::Bool=true,
+    lsbtrk::Bool=true, 
+    lsbtrk_shrinkby::Number=1024,
+    inner_loop_settings::InnerLoopSettings=InnerLoopSettings()
 )::ResultsCollector
     @assert length(v0) == size(this.A, 2)
     k = 0
@@ -331,30 +443,46 @@ function run_outerloop_for!(
     y⁺⁺ = this.z
     δy = this.y3
     rstlcllctr = this.collector
-
+    
+    initialize!(rstlcllctr, xk, f, this.A, this.omega)
     while true
         j, Bk, α, ϵk = _iterate(
             # All of these mutates. 
             this, yk⁺, xk⁺, vk⁺, this.v, ∇fy, y⁺, y⁺⁺, δy,
-            xk, vk, k, α, B0, Bk
+            xk, vk, k, α, B0, Bk, 
+            ls, lsbtrk, lsbtrk_shrinkby, inner_loop_settings
         )
+        # STORE. The iterates. 
         vk .= vk⁺
         xk .= xk⁺
         register!(
-            rstlcllctr, j, ϵk, norm(δy), 1/(Bk + ρ)
+            rstlcllctr, j, ϵk, norm(δy), 1/(Bk + ρ), xk, 
+            f, this.A, this.omega
         )
-
+        # CHECK. If rrrors occured. 
+        if j < 0 || isinf(Bk)
+            @assert j == -1 || j == -2 "Unknown error code what the fuck. "
+            if j == -1
+                rstlcllctr.flag = INNERLOOP_MAX_ITERATION_REACHED()
+                break        
+            end
+            if j == -2 
+                rstlcllctr.flag = INNERLOOP_LINESEARCH_FAILED()
+                break
+            end
+            rstlcllctr.flag = OUTERLOOP_LINESEARCH_FAILED()
+        end
         if norm(δy) < delta
             # EXITS. Optimality reached.
             break
         end
-        k += 1; if k > max_itr 
+        k += 1; if k >= max_itr 
             # EXITS. Maximum iteration reached. 
+            rstlcllctr.flag = OUTERLOOP_MAX_ITERATION_REACHED()
             break 
         end
 
     end
-
 
     return rstlcllctr
 end

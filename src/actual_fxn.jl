@@ -192,7 +192,9 @@ function glipz(
     return α*norm(A⁺*A)
 end
 
+
 # ------------------------------------------------------------------------------
+
 
 """
 It's a class made to model the function: 
@@ -200,8 +202,27 @@ X ↦ (α/2)‖A*X*C - B‖_F^2
 
 Here, A, C are both matrices. 
 This function can represent more advanced image bluring tasks. 
+But it's still obliged to operate on vector instead of, just matrix. 
 
 """
 struct MatrixResidualNormSquared <: ClCnvxFxn
+    # parameters for the function. 
+    alpha::Number
+    A::AbstractMatrix{Float64}
+    AT::AbstractMatrix{Float64}
+    B::AbstractMatrix{Float64}
+    # For computing
+    "p is the same shape as x "
+    P::AbstractMatrix{Float64}
+    "q is the same shape as Ax "
+    Q::AbstractMatrix{Float64}
+
+    
+end
+
+
+# ------------------------------------------------------------------------------
+
+struct SoftMaxLogistic <: ClCnvxFxn
     
 end
