@@ -76,7 +76,7 @@ end
         itr_max = 2^16
         global v = Vector{Float64}()
         @time j = do_pgd_iteration!(
-            InxProx, y, λ, itr_max=itr_max, epsilon=1e-5, 
+            InxProx, y, λ, itr_max=itr_max, epsilon=1e-10, 
             duality_gaps=v, backtracking=true
         )
         p = eval_primal_objective_at_current_point(InxProx, y, λ)

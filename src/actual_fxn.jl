@@ -83,10 +83,12 @@ function dval(
     this::OneNormFunction, 
     x::FiniteEuclideanSpace
 )::Number
-    if norm(x, Inf) > this.lambda
-        return Inf64
+    # Loosen the criteria numerical computations issues. 
+    # Adds some slack and make use of Catastrophic cancellation errors. 
+    if norm(x, Inf) - this.lambda < eps(Float64)
+        return 0.0
     end
-    return 0.0
+    return Inf
 end
 
 

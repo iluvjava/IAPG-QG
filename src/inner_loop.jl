@@ -134,7 +134,7 @@ function _update_dual!(
     ∇::Vector{Float64},             # will mutate. 
     v::Vector{Float64},             # will reference. 
     Ay::Vector{Float64},            # will reference. 
-    Aᵀv::Vector{Float64},           # will ref
+    Aᵀv::Vector{Float64},           # will Mutate
     λ::Number,                      # will ref
     τ::Number,                      # will ref
     backtracking::Bool=true, 
@@ -166,7 +166,7 @@ function _update_dual!(
             τ /= 2^(1/bcktrck_shrinkage)   # Shrink τ. Backtracking.  
             break
         else
-            τ *= 2              # Increase τ, Line Search. 
+            τ *= 2                  # Increase τ, Line Search. 
         end
     end
     return τ
@@ -199,7 +199,7 @@ function do_pgd_iteration!(
     # check dimensions of inputs. 
     @assert size(this.v) == size(v_out)
     @assert size(this.z) == size(z_out)
-    @assert epsilon > 0 "Expect ϵ > 0, but got ϵ=$epsilon"
+    @assert epsilon >= 0 "Expect ϵ >= 0, but got ϵ=$epsilon"
     @assert lambda > 0 "Expect λ > 0, but we had λ=$lambda. Catastrophic error."
 
     # Referenced Parameters: 
@@ -247,7 +247,9 @@ function do_pgd_iteration!(
         τ = _update_dual!(
             this, 
             v⁺, AAᵀv, this.v3,      # will mutate
-            v, Ay, Aᵀv, λ, τ,       # no mutate
+            v, Ay,                  # Will reference
+            Aᵀv,                    # Will mutate 
+            λ, τ,
             backtracking,
         )
         if isinf(τ)  
@@ -255,12 +257,13 @@ function do_pgd_iteration!(
             j = -2
             break
         end
-        # UPDATES. Running parameters
-        mul!(Aᵀv, Aᵀ, v)
-        z⁺ .= @. y - λ*Aᵀv
-        z  .= z⁺
+        # UPDATES. All Iterates. 
         v  .= v⁺
+        mul!(Aᵀv, Aᵀ, v)
+        z .= @. y - λ*Aᵀv
+        
     end
+    z⁺  .= z
     return j
 end
 

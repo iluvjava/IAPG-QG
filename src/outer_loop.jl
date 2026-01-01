@@ -142,13 +142,19 @@ The inner loop has several parameters that can be adjusted.
 These parameters wil be referred here for the outer loop to manage. 
 Note. If it's set for one outer loop, then it's there fixed for that outer loop. 
 """
-struct InnerLoopSettings 
+struct InnerLoopCommunicator 
     
     itr_max::Int
     backtracking::Bool
     bcktrck_shrinkage::Int
 
-    function InnerLoopSettings(
+    # More fields? : 
+    # 0. The progress meter. 
+    # 1. Last Inner Loop Total Iterations Counts. 
+    # 2. Outer Loop stoping conditions over tolerance. 
+    # 3. Current iteration of the inner loop
+
+    function InnerLoopCommunicator(
         itr_max::Int=4096, 
         backtracking::Bool=true, 
         bcktrck_shrinkage::Int=2048
@@ -160,8 +166,9 @@ end
 
 
 
+
+
 struct IAPGOuterLoopRunner
-    # Important Objects
     f::ClCnvxFxn                # differentiable. 
     omega::ClCnvxFxn            # Proxable. 
     A::AbstractMatrix           
@@ -262,7 +269,7 @@ function _ipg!(
     B::Number,                                  # Will reference
     ϵ::Number,                                  # Will reference
     ρ::Number,                                  # Will reference
-    inner_loop_settings::InnerLoopSettings      # Will reference
+    inner_loop_settings::InnerLoopCommunicator      # Will reference
 )::Number
     ipp = this.ipp
     L = (1 + ρ)*B
@@ -306,7 +313,7 @@ function _ipg_ls!(
     ls::Bool,                       # Will reference
     lsbtrk::Bool,                   # Will reference
     lsbtrk_shrinkby::Number, 
-    inner_loop_settings::InnerLoopSettings
+    inner_loop_settings::InnerLoopCommunicator
 )::Tuple{Int, Float64}
     
     # Reference these constant variables: 
@@ -390,7 +397,7 @@ function _iterate(
     ls::Bool,
     lsbtrk::Bool, 
     lsbtrk_shrinkby::Number, 
-    inner_loop_settings::InnerLoopSettings
+    inner_loop_settings::InnerLoopCommunicator
 )::Tuple{Int, Float64, Float64, Float64}
     # Reference the constants. 
     f = this.f; ρ = this.rho; E = this.E; p = this.p
@@ -429,7 +436,7 @@ function run_outerloop_for!(
     lsbtrk::Bool=true, 
     lsbtrk_shrinkby::Number=1024,
     show_progress::Bool=true,
-    inner_loop_settings::InnerLoopSettings=InnerLoopSettings()
+    inner_loop_settings::InnerLoopCommunicator=InnerLoopCommunicator()
 )::ResultsCollector
     @assert length(v0) == size(this.A, 2)
     k = 0
@@ -467,7 +474,7 @@ function run_outerloop_for!(
             update!(
                 ProgMeter, 
                 δynorm, 
-                showvalues=[("Outer Loop k",k), ("Inner Loop Iterated for",j)]
+                showvalues=[("k",k), ("Last Inner Loop Iterated for",j)]
             ) 
         end
         # CHECK. If rrrors occured. 

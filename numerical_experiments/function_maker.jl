@@ -17,10 +17,10 @@ function make_fd_matrix(n::Number, bnd_type::Int=1)::AbstractMatrix
     c = Vector{Int}()
     r = Vector{Int}()
     v = Vector{Float64}()
-    h = 1/n
+    h = 1
     for i in 0:(n - 1)
         # Diagonal ones
-        push!(r, i); push!(c, i); push!(v, h)
+        push!(r, i); push!(c, i); push!(v, 1/h)
         if bnd_type == 0 && i == n - 1
             continue
         end
@@ -30,7 +30,7 @@ function make_fd_matrix(n::Number, bnd_type::Int=1)::AbstractMatrix
         else
             push!(c, i == n - 1 ? n - 2 : i + 1)
         end
-        push!(v, -h)
+        push!(v, -1/h)
     end
     r .+= 1
     c .+= 1
@@ -67,6 +67,8 @@ The box kernel: [1, ..., 1]/((2*width - 1) + 1)
 function box_kernel_averaging(
     n::Number, width::Int=3
 )::AbstractMatrix
+    # Tolerate and handle weird inputs. 
+    width = max(2, width)
     l = 2*(width - 1) + 1
     k = 1/l
 
