@@ -7,7 +7,7 @@ include("function_maker.jl")
 include("fast_finite_diff_matrix.jl")
 
 
-n = 1024
+n = 2048
 
 # Setup the problems
 let
@@ -51,11 +51,14 @@ x0 = zeros(n)
     inner_loop_settings=InnerLoopCommunicator(65536*16, true, 4096)
 )
 
-# PLOTTING OUT THE SIGNALS =====================================================
+# ==============================================================================
+# VISUALIZING THE SIGNALS 
+# ==============================================================================
+
 # Observed VS The denoised signal. 
-# x: The grid. 
-# y: The original signal 
-# Results.x: The deblurred signal.  
+# - x: The grid. 
+# - y: The original signal 
+# - Results.x: The reconstructed signal.  
 p1 = scatter(
     x, NoisyBlurred_Signal, 
     title="Corrupted VS Recovered Signal", 
@@ -94,7 +97,7 @@ p2 |> display
 savefig(p2, "Ground Truth VS Recovered Signal N=$n=n.png")
 
 # ==============================================================================
-# INSIGHTS INTO INNER LOOP ITERATION WRT TO OTHER VARIABLES. 
+# INNTER LOOP ITERATION RELATIVE TO OTHER QUANTITIES 
 # ==============================================================================
 
 InnerLoop_ItrJ_Cum = accumulate(+, Results.j[1:end - 1]) # prevent last one is -1.
