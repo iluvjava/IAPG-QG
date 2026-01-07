@@ -46,24 +46,20 @@ end
 1D convolution using a box kernel. Always periodic. 
 The box kernel: [1, ..., 1]/((2*width - 1) + 1)
 
-
 """
 function box_kernel_averaging(
-    n::Number, width::Int=3
+    n::Number, l::Int=3
 )::AbstractMatrix
     # Tolerate and handle weird inputs. 
-    width = max(2, width)
-    l = 2*(width - 1) + 1
 
     r = Vector{Int}()
     c = Vector{Int}()
     v = Vector{Float64}()
 
     for i = 0:(n - 1)
-        s = max((i - div(l, 2)), 0)
-        t = min((i + div(l, 2)), n - 1)
-        for j = s:t
-            push!(r, i); push!(c, mod(j, n)); push!(v, 1/(t - s + 1))
+        t = min(min(i, n - 1 - i), l)
+        for j = i - t:i + t
+            push!(r, i); push!(c, j); push!(v, 1/(2*t + 1))
         end
     end
     r .+= 1; c .+= 1

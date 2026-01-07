@@ -259,7 +259,7 @@ proximal gradient method.
 
 
 """
-function _ipg!(
+@inline function _ipg!(
     this::IAPGOuterLoopRunner,
     y⁺::Vector{Float64},                        # Will mutate
     y⁺⁺::Vector{Float64},                       # Will mutate
@@ -297,7 +297,7 @@ Performs a step of proximal gradient and then do line search if asked for it.
 
 
 """
-function _ipg_ls!(
+@inline function _ipg_ls!(
     this::IAPGOuterLoopRunner,      
     y⁺::Vector{Float64},            # Will mutate
     y⁺⁺::Vector{Float64},           # Will mutate

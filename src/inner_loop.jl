@@ -181,7 +181,7 @@ then it's edge cases
 is not satisfied. 
 2. `-2`, it means backtracking line search in the dual problem failed. 
 """
-function do_pgd_iteration!(
+@inline function do_pgd_iteration!( 
     this::InexactProximalPoint,      # will mutate
     v_out::Vector{Float64},          # will mutate
     z_out::Vector{Float64},          # will mutate
@@ -227,7 +227,7 @@ function do_pgd_iteration!(
         # compute primal dual objective p, q
         mul!(Az, A, z)
         zy .= @. z - y 
-        p  = ω(Az) + dot(zy, zy)/(2λ)  
+        p = ω(Az) + dot(zy, zy)/(2λ)  
         q = (λ/2)*dot(Aᵀv, Aᵀv) - dot(Aᵀv, y) + dval(ω, v)
         if !isnothing(duality_gaps)  
             push!(duality_gaps, p + q)

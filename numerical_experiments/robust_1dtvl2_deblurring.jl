@@ -14,7 +14,7 @@ let
 
     global x = LinRange(-2, 2, n)
     global y = @. ((2pi*x) |> sin |> sign)
-    global B = box_kernel_averaging(n, div(32, n))
+    global B = box_kernel_averaging(n, div(n, 16))
 
     # x: Time domain of the signal. 
     # y: The true signal. 
@@ -23,17 +23,17 @@ let
     
     # Corrupt the signal
     global Blurred_Signal = B*y
-    noise = 3e-1*randn(n)
-    global Corrupted_Signal = noise + Blurred_Signal
+    noise = 3e-1*randn(length(Blurred_Signal))
+    global NoisyBlurred_Signal = noise + Blurred_Signal
     global C = B
-    global b = Corrupted_Signal
+    global b = NoisyBlurred_Signal
     
 
 end
 
 # Setup the cost functions of the optimizations problem. 
 f = ResidualNormSquared(C, b)
-ω = OneNormFunction(10)
+ω = OneNormFunction(10.0)
 # A = make_fd_matrix(n, 0)
 A = FastFiniteDiffMatrix(n)
 rho = 1
@@ -46,7 +46,7 @@ OuterLoop = IAPGOuterLoopRunner(
 x0 = zeros(n)
 
 @time global Results = run_outerloop_for!(
-    OuterLoop, x0, 1e-5, 
+    OuterLoop, x0, 1e-8, 
     max_itr=1024, lsbtrk=true, show_progress=true,
     inner_loop_settings=InnerLoopCommunicator(65536*16, true, 4096)
 )
@@ -57,7 +57,7 @@ x0 = zeros(n)
 # y: The original signal 
 # Results.x: The deblurred signal.  
 p1 = scatter(
-    x, Corrupted_Signal, 
+    x, NoisyBlurred_Signal, 
     title="Corrupted VS Recovered Signal", 
     color=:gray, 
     label="Corrupted Signal", 

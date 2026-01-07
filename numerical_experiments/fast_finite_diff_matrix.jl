@@ -1,12 +1,13 @@
-import LinearAlgebra: adjoint, transpose, mul!, size, norm
-import Base: *, display
+# import LinearAlgebra: adjoint, transpose, mul!, size, norm
+import LinearAlgebra
+# import Base: * 
 
 
 abstract type FiniteDifferenceMatrix <: AbstractMatrix{Float64}
 end
 
 
-function norm(this::FiniteDifferenceMatrix, p::Int)::Float64
+function LinearAlgebra.norm(this::FiniteDifferenceMatrix, p::Int)::Float64
     @assert p == 2 "Sorry, we only implemented the Frobenius Norm for "*
     "abstract type FiniteDifferenceMatrix"
     return sqrt(this.n*(this.n - 1))
@@ -24,7 +25,7 @@ struct FastFiniteDiffMatrix <: FiniteDifferenceMatrix
 end
 
 
-function size(this::FastFiniteDiffMatrix)::Tuple{Int, Int}
+function LinearAlgebra.size(this::FastFiniteDiffMatrix)::Tuple{Int, Int}
 return (this.n - 1, this.n) end
 
 function Base.getindex(this::FastFiniteDiffMatrix, i::Int, j::Int)::Float64
@@ -38,7 +39,7 @@ function Base.getindex(this::FastFiniteDiffMatrix, i::Int, j::Int)::Float64
     return 0.0
 end
 
-function (*)(
+function (Base.:*)(
     this::FastFiniteDiffMatrix, 
     x::AbstractVector{T}
 )::AbstractVector{T} where {T<:Number}
@@ -48,7 +49,7 @@ function (*)(
 end
 
 
-function mul!(
+function LinearAlgebra.mul!(
     y::AbstractVector{T}, 
     ::FastFiniteDiffMatrix,  
     x::AbstractVector{T}
@@ -70,10 +71,10 @@ struct FastFiniteDiffMatrixTransposed <: FiniteDifferenceMatrix
     function FastFiniteDiffMatrixTransposed(n::Int) return new(n) end
 end
 
-function size(this::FastFiniteDiffMatrixTransposed)::Tuple{Int, Int}
+function LinearAlgebra.size(this::FastFiniteDiffMatrixTransposed)::Tuple{Int, Int}
 return (this.n, this.n - 1) end
 
-function adjoint(::FastFiniteDiffMatrixTransposed)::AbstractMatrix
+function LinearAlgebra.adjoint(::FastFiniteDiffMatrixTransposed)::AbstractMatrix
     return FastFiniteDiffMatrix(this.n)
 end
 
@@ -88,18 +89,18 @@ function Base.getindex(this::FastFiniteDiffMatrixTransposed, j::Int, i::Int)
     return 0.0
 end
 
-transpose(
+LinearAlgebra.transpose(
     this::FastFiniteDiffMatrixTransposed
 )::AbstractMatrix = adjoint(this)
 
-function adjoint(this::FastFiniteDiffMatrix)::AbstractMatrix
+function LinearAlgebra.adjoint(this::FastFiniteDiffMatrix)::AbstractMatrix
     return FastFiniteDiffMatrixTransposed(this.n)
 end
-transpose(
+LinearAlgebra.transpose(
     this::FastFiniteDiffMatrix
 )::AbstractMatrix = adjoint(this)
 
-function (*)(
+function (Base.:*)(
     this::FastFiniteDiffMatrixTransposed, 
     x::AbstractVector{T}
 )::AbstractVector{T} where {T <: Number}
@@ -108,7 +109,7 @@ function (*)(
     return y
 end
 
-function mul!(
+function LinearAlgebra.mul!(
     y::AbstractVector{T}, 
     ::FastFiniteDiffMatrixTransposed, 
     x::AbstractVector{T}
