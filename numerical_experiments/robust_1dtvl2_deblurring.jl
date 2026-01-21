@@ -108,7 +108,7 @@ p3 = plot(
     title="Illustrating if: \$k^{-1}"*
     "\\left(\\sum_{i = 1}^kJ^{(i)}\\right)\\propto \\log_2(k)\$",
     label="Accmulated Inner Loop Iterations over k", 
-    xscale=:log2, xlabel="\$\\log_2(k)\$, k: Iteration of the Outerloop", 
+    xscale=:log2, xlabel="\$k\$: Iteration of the Outerloop", 
     ylabel="\n\$k^{-1}\\left(\\sum_{i = 1}^kJ^{(i)}\\right)\$\n", 
     color=:gray, linewidth=4,
     size=(800, 600), 
@@ -139,20 +139,20 @@ savefig(p4, "Cum Inner Loop Itr vs Stationarity N=$n.png")
 # VS Inner Loop Iteration per Outer Loop Iterations
 # Expect Log Log Relations. 
 
-Epsilons = Results.epsilon
-Relative_Errors = @. (Results.dy^2)*rho*Results.ss/2
-TotalErrors = @. Epsilons + Relative_Errors
+# Epsilons = Results.epsilon
+# Relative_Errors = @. (Results.dy^2)*rho*Results.ss/2
+# TotalErrors = @. Epsilons + Relative_Errors
 
-p5 = scatter(
-    Epsilons, TotalErrors, 
-    xscale=:log2, yscale=:log2, 
-    minorgrid=true, minorticks=2, 
-    marker=:x, markerstrokewidth=2, markersize=5, 
-    size=(800, 600), dpi=330, 
-    title="\$\\epsilon_k\$ vs \$J^{(k)}\$", 
-    xlabel="\$\\epsilon_k\$", 
-    ylabel="\$J^{(k)}\$"
-)
+# p5 = scatter(
+#     Epsilons, TotalErrors, 
+#     xscale=:log2, yscale=:log2, 
+#     minorgrid=true, minorticks=2, 
+#     marker=:x, markerstrokewidth=2, markersize=5, 
+#     size=(800, 600), dpi=330, 
+#     title="\$\\epsilon_k\$ vs \$J^{(k)}\$", 
+#     xlabel="\$\\epsilon_k\$", 
+#     ylabel="\$J^{(k)}\$"
+# )
 
-p5 |> display
-savefig("Epsilonk vs Jk N=$n.png")
+# p5 |> display
+# savefig("Epsilonk vs Jk N=$n.png")
