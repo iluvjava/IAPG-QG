@@ -42,7 +42,9 @@ mutable struct ResultsCollector
     "Iteration by the inner loop. "
     j::Vector{Int}
     "Error schedule used for each iteration of the inner loop. "
-    epsilon::Vector{Float64}
+    abstols::Vector{Float64}
+    "(ρ_k/2)‖xk - yk‖^2"
+    reltols::Vector{Float64}
     "‖xk - yk‖ "
     dy::Vector{Float64}
     "Stepsize used, 1/(B + L). "
@@ -64,6 +66,7 @@ mutable struct ResultsCollector
 
         return new(
             Vector{Int}(), 
+            Vector{Float64}(), 
             Vector{Float64}(), 
             Vector{Float64}(),
             Vector{Float64}(), 
@@ -108,6 +111,7 @@ function register!(
     this::ResultsCollector,
     j::Int,
     ϵk::Float64, 
+    reltol::Float64,
     pg::Float64, 
     ss::Float64, 
     x::Vector{Float64}, 
@@ -116,7 +120,8 @@ function register!(
     omega::ClCnvxFxn
 )::Nothing
     push!(this.j, j)
-    push!(this.epsilon, ϵk)
+    push!(this.abstols, ϵk)
+    push!(this.reltols, reltol)
     push!(this.dy, pg)
     push!(this.ss, ss)
     # Store Solution. 
@@ -134,7 +139,6 @@ function register!(
     end
     return nothing
 end
-
 
 
 
@@ -240,10 +244,9 @@ end
 
 
 ### Implementations plans 
-### 1. Define all relevant parameters
+### 1. Define all relevant parameters. 
 ### 2. Prototype one step of iteration successfully at least. 
 ### 3. Optimize it while testing it continuously. 
-
 """
 Perform one iteration of inexact proximal gradient method operator and that is. 
 
@@ -403,6 +406,7 @@ function _iterate(
     yk⁺ .= @. αk*vk + (1 - αk)*xk
     fy = grad_and_fxnval!(f, ∇fy, yk⁺)
     L0 = (1 + ρ)*B0; Lk = (1 + ρ)*Bk
+    # The absolute error. Inner loop handles the relative error given this.rho. 
     ϵk = k >= 1 ? (Lk/L0)*((αk)^2)*E/(k^p) : E
     j, Bk⁺ = _ipg_ls!(
         this, y⁺, y⁺⁺, v, δy,   # Will mutate. 
@@ -466,7 +470,7 @@ function run_outerloop_for!(
         xk .= xk⁺
         δynorm = norm(δy)
         register!(
-            rstlcllctr, j, ϵk, δynorm, 1/(Bk*(1 + ρ)), xk, 
+            rstlcllctr, j, ϵk, ρ*Bk*δynorm^2, δynorm, 1/(Bk*(1 + ρ)), xk, 
             f, this.A, this.omega
         )
         if show_progress 

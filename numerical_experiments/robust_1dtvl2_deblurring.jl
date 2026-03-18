@@ -15,6 +15,7 @@ OVERWRITE_WORKSPACE = false
 
 # Setup the problems
 if !OVERWRITE_WORKSPACE && isfile(WORKSPACE_FILE)
+    # Load back all the variables from previous sessions. 
     @load WORKSPACE_FILE x y Blurred_Signal NoisyBlurred_Signal Results
     println("Loaded workspace from $WORKSPACE_FILE")
 else
@@ -45,11 +46,12 @@ else
     ω = OneNormFunction(2.0)
     # A = make_fd_matrix(n, 0)
     A = FastFiniteDiffMatrix(n)
-    rho = 1e-5
+    rho = 1
+    p = 2
 
     # Make the outer loop.
     OuterLoop = IAPGOuterLoopRunner(
-        f, ω, A, error_scale=64, rho=rho, store_fxn_vals=true
+        f, ω, A, error_scale=64, p=2, rho=rho, store_fxn_vals=true
     )
 
     x0 = zeros(n)
@@ -73,13 +75,13 @@ end  # if/else workspace
 # - Results.x: The reconstructed signal.  
 p1 = scatter(
     x, NoisyBlurred_Signal, 
-    title="Corrupted VS Recovered Signal", 
+    title="Corrupted VS Recovered", 
     color=:gray, 
     label="Corrupted Signal", 
     marker=:x, 
     markerstrokewidth=3, 
     markersize=5, 
-    size=(800, 600), 
+    size=(800, 600),
     dpi=330
 )
 plot!(
@@ -87,18 +89,18 @@ plot!(
     color=:blue, alpha=0.5, linewidth=3, label="Recovered"
 )
 p1|>display
-savefig(p1, "Corrupted VS Recovered Signal N=$n.png")
+savefig(p1, "Corrupted VS Recovered N=$n.png")
 
 # Denoised VS Original Signal
-p2 = scatter(
+p2 = scatter( 
     x, y, 
-    title="Ground Truth VS Recovered Signal", 
+    title="Ground Truth VS Recovered", 
     color=:gray, 
     label="Ground Truth", 
     marker=:x, 
     markerstrokewidth=3, 
     markersize=5, 
-    size=(800, 600), 
+    size=(800, 600),
     dpi=330
 )
 plot!(
@@ -109,20 +111,77 @@ p2 |> display
 savefig(p2, "Ground Truth VS Recovered Signal N=$n=n.png")
 
 # ==============================================================================
+# ABSOLUTE TOLERANCE AND INNER LOOP ITERATIONS
+# ==============================================================================
+# Plotting out the values of ϵ_k vs J_k. 
+
+AbsTols = Results.abstols
+Jk = Results.j
+p3 = scatter(
+    AbsTols, @.(1/Jk), xscale=:log2, yscale=:log2, 
+    ylabel=L"J_k^{-1}", 
+    xlabel=L"\epsilon^\circ_k", 
+    title=L"J_k "*" vs "*L" \epsilon_k^\circ",
+    label="Data",
+    legend=:topleft,
+    markersize=3,
+    marker=:x, 
+    markerstrokewidth=1.5,
+    grid=true, 
+    gridstyle=:dash, 
+    gridlinewidth=0.5,
+    gridalpha=0.5, 
+    minorgrid=true,
+    minorticks=2,
+    minorgridalpha=0.2,
+    minorgridstyle=:dot,
+    tickfontsize=6, titlefontsize=8, legendfontsize=6, 
+    size=(400, 300), dpi=430
+)
+
+let
+    # The assumed relationship between input x: AbsTols, and output y: 1/Jk
+    # is that they have a linear relation under log log plot, i.e.,
+    # `ln(1/Jk) = -ln(Jk) = log(a) + b*log(x)`.
+    # Implying that the underlying relation between x, y is polynomial:
+    # `1/Jk = a*x^b`.
+    # Log-log linear regression: ln(1/Jk) = ln(a) + b*ln(x)
+    # Robustified: only fit on y values within [10th, 90th] percentile.
+    # - Alto: Commanded Claude for implementations.
+    # — Claude Sonnet 4.6
+    x = Float64.(AbsTols)
+    y = @. log(1.0 / Float64(Jk))
+    lo, hi = quantile(y, 0.10), quantile(y, 0.90)
+    mask = (y .>= lo) .& (y .<= hi)
+    X = hcat(ones(sum(mask)), log.(x[mask]))
+    lna, b = X \ y[mask]
+    a = exp(lna)
+    x_ref = exp.(LinRange(log(minimum(x)), log(maximum(x)), 300))
+    plot!(
+        p3, x_ref, @.(a * x_ref^b),
+        label=L"a(ϵ_k^∘)^b", color=:red, linewidth=2
+    )
+    @info "Model 1/Jk = a(ϵ_k^∘)^b fitted with a=$a, b=$b"  
+end
+
+p3 |> display
+savefig(p3, "Epsilonk vs Jk N=$n.png")
+
+
+# ==============================================================================
 # CONVERGENCE TO STATIONARITY CONDITION RELATIVE TO TOTAL INNER LOOP ITERATIONS
 # ==============================================================================
 # Log log plot of: 
 # 1. X-Axis is the array of the total number of iteration by the inner loop
 #    for every outer loop. 
 # 2. Y-Axis is the value of the residual, measured at that outer loop. 
-# Overall we expect a O(ε^(-1)\ln(1/ε)) relation between the quantities, 
-# We would need a reference plot, with the formulat `c(ε^(-1)\ln(1/ε))` for some 
-# constant c. 
+#   Overall we expect a O(ε^(-1)\ln(1/ε)) relation between the quantities, 
+#   We would need a reference plot, with the formulat `c(ε^(-1)\ln(1/ε))` 
+#   for some constant c. 
 
 
 Residuals = Results.dy
-Js = Results.j
-J_Summed = accumulate(+, Js)
+J_Summed = accumulate(+, Results.j)
 
 """
 Fit reference line y = c1·ref(x) + c0 to data (x_data, y_data).
@@ -145,22 +204,36 @@ x_range, y_ref = ref_line(J_Summed, Residuals)
 p4 = scatter(
     J_Summed, Residuals,
     xscale=:log2, yscale=:log2,
-    xlabel=L"\sum_{i=1}^k J^{(i)}",
+    xlabel=L"\sum_{i=0}^k J_{i}",
     ylabel=L"\Vert x_k - y_k\Vert",
-    title="Residual vs Inner Loop Iterations Summed",
+    title="Residual vs \$J_k\$ Summed",
     label="Data",
-    markershape=:+, markersize=5,
-    size=(800, 600), dpi=330
+    grid=true, 
+    gridstyle=:dash, 
+    gridlinewidth=0.5,
+    gridalpha=0.5, 
+    minorgrid=true,
+    minorticks=2,
+    minorgridalpha=0.2,
+    minorgridstyle=:dot,
+    mark=:x, 
+    markersize=3,
+    tickfontsize=6, titlefontsize=8, legendfontsize=5, 
+    size=(400, 300), dpi=430
 )
 
-GusssedModel = StrangeTwoPhaseLogLogModel()
-fit_model!(GusssedModel, Results.j, Results.dy)
-x_grid, y_ref = ref_line(GusssedModel)
+
+(!@isdefined GuessedModel) && (GuessedModel = StrangeTwoPhaseLogLogModel())
+fit_model!(GuessedModel, Results.j, Results.dy)
+x_grid, y_ref = ref_line(GuessedModel)
+@info "Model fitted"
+GuessedModel|>display
 
 plot!(
     p4, x_grid, y_ref,
-    label=L"c \cdot \ln(\min(\gamma, J))^\alpha / (\min(\gamma, J)^\beta",
-    color=:red, linewidth=2
+    label=L"c \cdot \ln(1, \max(c_1, \Sigma_{i = 0}^k J_i))^a / \max(c_1, \Sigma_{i = 0}^k J_i)^b",
+    color=:red, linewidth=1, 
+    legend=:bottomleft
 )
 p4 |> display
 savefig(p4, "Summed Inner Loop Itr vs Residual N=$n.png")
@@ -170,25 +243,41 @@ savefig(p4, "Summed Inner Loop Itr vs Residual N=$n.png")
 # OUTERLOOP ITERATION VS INNER LOOP ITERATION
 # ==============================================================================
 p5 = scatter(
-    Js, xscale=:log2,
+    Results.j, xscale=:log2,
     label="Data",
-    xlabel="Outer loop iteration: k",
-    ylabel="\n\$J_k\$ such that: "*L"\epsilon_k"*" tolerance is reached",
+    xlabel="k",
+    ylabel=L"J_k",
     title="\$J_k\$ vs \$k\$",
-    markershape=:+, markersize=5,
-    size=(800, 600), dpi=430, legend=:bottomright,
+    legend=:bottomright,
+    markersize=3, 
+    marker=:x,
+    grid=true, 
+    gridstyle=:dash, 
+    gridlinewidth=0.5, 
+    gridalpha=0.5, 
+    minorgrid=true, 
+    minorticks=2, 
+    minorgridalpha=0.2,
+    minorgridstyle=:dot,
+    tickfontsize=6, titlefontsize=8,
+    size=(400, 300), dpi=430
 )
 
 # Log-linear regression: Jk = a + b*ln(k)  =>  ref line: exp(a)*k^b
 # — Claude Sonnet 4.6
 # - Alto
 let
-    k = Float64.(1:length(Js))
-    X = hcat(ones(length(k)), log.(k))
-    a, b = X \ Float64.(Js)
-    k_ref = exp.(LinRange(1.0, log(length(Js)), 300))
-    @info "The ref line for Outer Loop Vs Inner Loop has: \n "*
-    "a=$a, b=$b. "
+    # Robustified: only fit on y values within [10th, 90th] percentile.
+    # — Claude Sonnet 4.6
+    k = Float64.(1:length(Results.j))
+    y = Float64.(Results.j)
+    lo, hi = quantile(y, 0.10), quantile(y, 0.90)
+    mask = (y .>= lo) .& (y .<= hi)
+    X = hcat(ones(sum(mask)), log.(k[mask]))
+    a, b = X \ y[mask]
+    k_ref = exp.(LinRange(1.0, log(length(Results.j)), 300))
+    @info "The ref line parameters of Outer Loop "*
+    "Iterations Vs Inner Loop Iterations has: \n a=$a, b=$b."
     plot!(
         p5, k_ref, @.(a + b*log(k_ref)),
         label=L" y = log(e^a k^b)", color=:red, linewidth=2
@@ -197,6 +286,45 @@ end
 
 p5 |> display
 savefig(p5, "Jk vs k N=$n.png")
+
+# ==============================================================================
+# THE RELATIVE VS ABSOLUTE TOLERANCE
+# ==============================================================================
+# How does the absolute tolerance, and the relative tolerance by the 
+# inner loop looks like compared to each other? 
+
+RelTols = Results.reltols
+AbsTols = Results.abstols
+TolsSummed = @. RelTols + AbsTols
+
+p6 = plot(
+    AbsTols, 
+    yscale=:log2, xscale=:log2, 
+    label=L"\epsilon_k^∘",
+    xlabel="k",
+    # ylabel="Inner loop Tolerances",
+    title="Inner loop relative and absolute tolerance",
+    legend=:bottomleft,
+    linestyle=:dot,
+    markersize=5, 
+    grid=true, 
+    gridstyle=:dash, 
+    gridlinewidth=0.5, 
+    gridalpha=0.5, 
+    minorgrid=true, 
+    minorticks=2, 
+    minorgridalpha=0.2,
+    minorgridstyle=:dot,
+    tickfontsize=6, titlefontsize=8,labelfontsize=8, 
+    size=(400, 300), dpi=430
+)
+plot!(
+    p6, RelTols,
+    label=L"\rho_k/\Vert x_k - y_k\Vert"
+)
+p6|>display
+savefig(p6, "abs vs rel tols N=$n.png")
+
 
 
 # ==============================================================================

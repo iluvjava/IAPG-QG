@@ -8,8 +8,10 @@ mutable struct StrangeTwoPhaseLogLogModel
     best_c::Number
     best_alpha::Number
     best_beta::Number
-    """Phase transition threshold"""
+    "Phase transition threshold."
     gamma::Number
+    "The numbre which to determine phase transition. "
+    residual_threshold::Number
 
     alpha_bounds::Tuple{Number, Number}
     beta_bounds::Tuple{Number, Number}
@@ -19,7 +21,8 @@ mutable struct StrangeTwoPhaseLogLogModel
     function StrangeTwoPhaseLogLogModel(
         alpha_bounds::Tuple{Number, Number}=(1.0, 8.0),
         beta_bounds::Tuple{Number, Number}=(0.8, 4.0),
-        n_points::Int=300
+        n_points::Int=300, 
+        residual_threshold::Number=0.1
     )
         alpha_bounds[1] >= alpha_bounds[2] && error(
             "alpha_bounds must satisfy lower < upper, got $alpha_bounds")
@@ -29,7 +32,8 @@ mutable struct StrangeTwoPhaseLogLogModel
             "bounds must be positive; got alpha_bounds=$alpha_bounds, beta_bounds=$beta_bounds")
         n_points < 2 && error("n_points must be ≥ 2, got $n_points")
         return new(
-            NaN, NaN, NaN, NaN, alpha_bounds, beta_bounds, n_points, (NaN, NaN)
+            NaN, NaN, NaN, NaN, residual_threshold, 
+            alpha_bounds, beta_bounds, n_points, (NaN, NaN),
         )
     end
 
@@ -38,7 +42,24 @@ mutable struct StrangeTwoPhaseLogLogModel
 end
 
 """
-Fit the model and find the best parameters.
+Fit the model and find the best parameters using a two-stage grid search.
+
+Parameters:
+  this             — the `StrangeTwoPhaseLogLogModel` instance to fit (mutated in place)
+  j_values         — inner-loop iteration counts per outer iteration (not cumulative)
+  residuals        — residual values corresponding to each outer iteration
+  n_alpha_points   — number of grid points for alpha on the coarse search
+  n_beta_points    — number of grid points for beta on the coarse search
+
+The function first detects the phase-transition threshold `gamma` as the
+cumulative iteration count at which `residuals` first drops to or below
+`this.residual_threshold`. It then performs a coarse 2-D grid search over
+(alpha, beta), followed by a fine search at 1/n_alpha_points (resp.
+1/n_beta_points) of the coarse step size centred on the coarse best. For
+each (alpha, beta) pair the optimal `c` is computed analytically by
+minimising the log-log MSE over the asymptotic region (cumulative iterations
+> gamma). Results are stored back into `this`.
+
 - Alto
 — Claude Sonnet 4.6
 - Alto: Fixed a small bug regarding step() function
@@ -53,7 +74,8 @@ function fit_model!(
 
     jΣ = Float64.(accumulate(+, j_values))
     # gamma: J_Summed at the first index where Residuals <= 1. 
-    idx_transition = findfirst(r -> r <= 1.0, residuals)
+    threshold = this.residual_threshold
+    idx_transition = findfirst(r -> r <= threshold, residuals)
     gamma = this.gamma = 
         isnothing(idx_transition) ? jΣ[1] : jΣ[idx_transition]
     model_shape(x, alpha, beta) = 
@@ -142,4 +164,25 @@ function ref_line(this::StrangeTwoPhaseLogLogModel)::Tuple{Vector, Vector}
     ))
     y_ref  = @. this.best_c * model_shape(x_grid, this.best_alpha, this.best_beta)
     return x_grid, y_ref
+end
+
+
+"""
+Display a fitted `StrangeTwoPhaseLogLogModel`, showing the model formula, the
+best-fit parameter values, and the search ranges used during fitting.
+
+— Claude Sonnet 4.6
+"""
+function Base.show(io::IO, ::MIME"text/plain", m::StrangeTwoPhaseLogLogModel)
+    print(io, "Model: ")
+    println(io, "y = c * max(1, log(max(gamma, x))^alpha) / max(gamma, x)^beta")
+    println(io, "Has been fitted with: ")
+    println(io, "alpha: $(m.best_alpha)")
+    println(io, "beta:  $(m.best_beta)")
+    println(io, "gamma: $(m.gamma)")
+    println(io, "c:     $(m.best_c)")
+    println(io, "")
+    println(io, "Search ranges for the parameters: ")
+    println(io, "alpha: $(m.alpha_bounds[1]):$(m.alpha_bounds[2])")
+    print(io, "beta:  $(m.beta_bounds[1]):$(m.beta_bounds[2])")
 end
